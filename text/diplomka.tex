@@ -1,0 +1,592 @@
+\input ctustyle2
+
+\def\thednum{(\thechapnum.\the\dnum)}  % use section number in equations
+\def\ci{\perp\!\!\!\perp} % from Wikipedia
+\def\nci{\not\!\ci} % from Wikipedia
+\def\definice{\numberedpar B{Definition}}
+\def\example{\numberedpar B{Example}}
+
+\worktype [M/EN]
+\faculty {F3}
+\department {Department of Computer Science}
+\title {Efficient Algorithms for Relational Marginal Polytope Construction}
+\titleCZ {Efektivní algoritmy pro konstrukci relačních marginálních polytopů}
+\author {Jan Kozák}
+\date {August 2020}
+\supervisor {Ing. Ondřej Kuželka, Ph.D.}
+\abstractEN {The goal of the thesis is to design an efficient heuristic and/or approximation algorithms for construction of {\it relational marginal polytopes}, a geometrical representation of the set of feasible solutions of the relational marginal problem, which is a convex optimization task of finding the max-entropy distributions over possible worlds in Markov logic networks (MLN). The heuristic is compared to naive exact domain-liftable algorithm described by Kuželka and Yang in their paper {\it Domain-Liftability of Relational Marginal Polytopes}, 2020~[\rcite[KuzelkaAISTATS]].}
+\abstractCZ {Cílem práce je navržení efektivních heuristik a/nebo aproximačních algoritmů pro konstrukci {\it relačních marginálních polytopů}. Ty jsou geometrickou reprezentací množiny přípustných řešení tzv. relačního marginálního problémů, což je konvexní optimalizační úloha hledající pravděpodobnostní rozdělení nad možnými světy v~Markovských logických sítích mající maximální entropii. Heuristický algoritmus je porovnán s~naivním exaktním doménově liftovatelným algoritmem popsaným Kuželkou a Yangem v~jejich článku {\it Domain-Liftability of Relational Marginal Polytopes}, 2020~[\rcite[KuzelkaAISTATS]].}
+\keywordsEN {Markov Logic Networks, Relational Marginal Polytopes}
+\keywordsCZ {Markovské logické sítě, relační marginální polytopy}
+%\thanks{...}
+\declaration {      % Use main language here
+   I declare that this thesis has been composed solely by myself and except wherestates otherwise by reference or acknowledgment, the work presented is entirely my own.
+\par
+   In Prague, 14 August 2020 % !!! Attention, you have to change this item.
+}
+
+\makefront
+\chap Introduction
+\par 
+The goal of the thesis is to design an efficient heuristic and approximation algorithms for calculation of {\it relational marginal polytopes}, a geometrical representation of the set of feasible solutions of the relational marginal problems which is a convex optimization task of finding the max-entropy distributions over possible worlds in Markov logic networks (MLN). MLNs are systems used in the statistical relational learning, a subfield of machine learning that is concerned with learning from relational data. MLNs are a generalization of the first-order probabilistic logic where each predicate is associated with a weight. The weight of the formula roughly specifies the level of our belief in it and importance of the formula --- the higher the weight, the less probable is the possible world which violates it. The MLN may be also considered a template for creation of Markov random fields (or Markov nets), which are --- together with Bayesian networks --- one of the most commonly used probabilistic graphical models, which capture dependencies among random variables into a graph, allowing for more efficient evaluation of inference queries over (possibly) large field of random variables.
+
+\par The thesis is structured into following chapters:
+\begitems \style .
+* Preliminaries --- the chapter summarizes important basic concepts related to Markov logic networks. First the general approaches for handling uncertainty in logic are described followed by overview of probabilistic graphical models.
+* Markov logic networks --- the chapter describes properties and definitions related to Markov logic networks.
+* Implementation --- the chapter describes implementation of algorithms.
+\enditems
+\chap Preliminaries
+%TODO prepsat tenhle uvod...
+\par
+This chapter provides a basic background about mathemathical, logical and machine learning concepts that are related to the topic of the thesis. First the first-order logic (FOL) considered in the thesis is described, followed by description of probabilistic logics which incorporate uncertainty into the standard first-order or propositonal logics. Finally a notion of probabilistic graphical models is debated, focused on Bayesian networks and Markov random fields. The former are integral part of Markov logic networks, the key topic of the thesis.
+
+\sec First-Order Logic
+\par 
+The thesis considers a function-free first-order logic language~$\cal{L}$ built from  sets $Const$ (constants), $Vars$ (variables) and $Rel$ (predicates). The set of  predicates $Rel$ is partitioned into subsets $Rel_i$ each containing predicates of arity~$i$, so $Rel = \bigcup_i Rel_i$. The constants represent the domain objects (e.g. {\tt Alice}, {\tt Bob}, {\tt Prague}) and the variable symbols range over them. The predicates represent relations among objects (e.g. {\tt Friends}) or their attributes (e.g. {\tt Capital}). 
+These three sets together constitute {\em non-logical symbols} and their actual meaning is specified by an {\em interpretation}. In addition to them the language~$\cal{L}$ is also built from a standard set of {\em logical symbols}:
+\begitems \style .
+* {\em universal} ($\forall$) and {\em existential} ($\exists$) quantifiers,
+* unary logical connective -- {\em negation} ($\neg$),
+* binary logical connectives -- {\em and} ($\land$), {\em or} ($\lor$), {\em implication} ($\Rightarrow$) and {\em equivalence} ($\Leftrightarrow$).
+\enditems
+\par 
+First-order logic theories about domains being modelled are formulated by means of {\em formulas}. Following list summarizes terminology related to their creation.
+\begitems \style .
+* {\sbf Term} is a constant or a variable.
+* {\sbf Atom} or {\sbf atomic formula} is a $k$-ary predicate $R(a_1, a_2, ... , a_k)$ with arguments $a_1, a_2, ... a_k \in Const \cup Vars$ (i.e. terms).
+* {\sbf Literal} is an atom or its negation.
+* {\sbf Formula} is a literal or a logical connection of two formulas (may be also applied recursively),
+\begitems \style o
+* set of variables appearing in formula $\alpha$ is denoted as $Vars(\alpha)$,
+* formula $\alpha$ is called {\em ground formula} if its arguments are constants,
+* formula $\alpha_0$ is called {\em grounding of formula} $\alpha$ if it can be obtained by substituting all variables in $Vars(\alpha)$ with constants from $Const$,
+* a variable in a formula is called {\em free} if it is not bound by any quantifier.
+\enditems
+* {\sbf Sentence} is a formula with no free variables.
+\enditems
+\par 
+A special type of formula is a {\em clause} which is a disjunction of literals. Every formula in FOL can be mechanically transformed to conjunction of clauses, so called {\em clausal form} or {\em conjuctive normal form} (CNF). This form is convenient for automated processing and due to beforementioned transformation we can consider all formulas to be in CNF without loss of generality.
+\par 
+A possible world $\omega$ is an assignment of truth values to every possible ground atom. A formula is {\em satisfiable} if there exists at least one possible world in which it holds true. All formulas together form a {\em knowledge base} ($KB$). The knowledge base might be considered a one big conjunction of all its formulas, as in basic setting it is expected that all formulas in the $KB$ are simultaneously true. A typical inference problem involving usage of a knowledge base is to decide if the $KB$ {\em entails} formula $F$ (denoted as $KB \models F$), that is if $F$ is true whenever $KB$ holds. This is usually checked by {\em refutation} -- $KB \models F$ holds iff $KB \cup \neg F$ is not satisfiable. Note however that this yields a positive answer also in cases when $KB$ contains a contradiction.
+\par 
+First-order logic used in the thesis is further restricted by following assumptions:
+% TODO tyhle veci dost mozna nakonec ignorujeme?
+\begitems \style .
+* unique names assumption -- different constants refer to different objects,
+* injective substitution -- different variables in a formula must be mapped to different terms,
+* only domains of finite size are considered.
+\enditems
+\secc Probabilistic logic
+Probabilistic logic is an extension of standard predicate (or propositional) logic which aims to handle uncertainty about actual truth values of formulas. Most common ways to achieve this goal are either specifying a probability that the formula is true or using multi-valued logic. An example of the former approach is the probabilistic logic defined in (Nilsson, 1986 [\rcite[Nilsson1986]]), which is the basis for formalism used in Markov Logic Networks, the main topic of the thesis. The latter approach is usually described in terms of {\it fuzzy logic} where the truth value of a formula may be any real number in interval [0,1]. 
+
+% TODO reference - discrete logic, definitions of fuzzy logic
+\par The key difference between these two concepts is that in the (Nilsson's) probabilistic logic it is assumed the formula is true with some probability (let's say 0.5), but in the end the formula will eventually be evaluated as strictly true or false. The probability just captures our {\it belief} about the actual truth value --- we are not sure what the value is at first, but once we are, there's no room for any value between true and false and the probabilistic logic becomes a standard 0--1 valued predicate logic. On the other hand it is perfectly valid to state that a truth value of a formula is 0.5 in fuzzy logic as it is built upon fuzzy set theory which extends the set membership function from bivalent to multi-valued, usually being defined as real number in the unit interval (but fuzzy theories with discrete values are also studied)~[\rcite[Zadeh1965]]. 
+% TODO reference
+
+\par With multi-valued logic it's possible to formally capture vague or imprecise definitions that naturally arise in everyday language, such as ‘‘{\it Tom is a little old.}’’ This may be represented as a predicate {\it old(Tom)}. In the standard predicate logic, we would have to decide if {\it a little old} is enough to declare this predicate true (maybe after asking for Tom's exact age and comparing it with some threshold), but in fuzzy logic the truth value of {\it old(Tom)} may be set to some appropriate value such as 0.3, indicating that Tom is not ‘‘fully’’ old yet but he's indeed a little old. With extending the range of possible truth values we also need to redefine behaviour of logic connectives (usually conjunction and implication) and it turns out there is not just one unique way how to do it, but there are actually many well-behaved definitions, each one creating a slightly different variant of fuzzy logic. Examples of some commonly used fuzzy conjunctions are shown in Figure~\ref[fuzzy_conjunctions].
+% TODO neco vic o fuzzy logice; some other approaches
+
+\topinsert \clabel[fuzzy_conjunctions]{Fuzzy conjunctions examples}
+\picw=14cm 
+\cinspic img/fuzzy-conj.png
+\caption/f Surface and contour plots of two fuzzy conjunction examples which are also {\it triangular norms} (t-norms). {\bf Upper}: Minimum t-norm $\top_{min} = {\rm min}\{a, b\}$. {\bf Lower}:~Łukasiewicz t-norm $\top_{Luk} = {\rm max}\{0, a + b - 1\}$.
+\endinsert
+
+\par 
+The probabilistic logic as defined by Nilsson introduces a {\it probability of sentence} and {\it possible worlds} semantics to incorporate uncertainty about the truth values into the first-order logic. If we consider only one sentence $S$, the sentence may be either {\it true} or {\it false}. This induces two sets of possible worlds --- ${\cal W}_1$ containing possible worlds where $S$ is true and ${\cal W}_2$ containing the worlds where $S$ is false. Then we can reason about the truth value of sentence $S$ in terms of probabilities by specifiying probability $p_1$ that the actual world is in ${\cal W}_1$ (and $S$ is therefore true) and probability $p_2 = 1 - p_1$ that the actual world is in ${\cal W}_2$. We can then say that the {\it (probabilistic) truth value} of sentence~$S$ is~$p_1$.
+\par 
+When we incorporate more sentences, the number of sets of possible worlds rises as every set of possible worlds ${\cal W}_i$ now represents a distinct combination of truth values assigned to each sentence. For $N$ sentences this may result in up to $2^N$ sets of possible worlds, but usually their total count is lower as some combinations are logically inconsistent and therefore define an {\it impossible world} (e.g. $S_1$ true, $S_2$ true but $S_3 = S_1 \land S_2$ false). The set of consistent possible worlds is then considered a sample space over which a probability distribution is defined. For every set of possible worlds ${\cal W}_i$ a probability $p_i$ specifies the probability that the actual world is in ${\cal W}_i$. As the sets of possible worlds are exclusive and exhaustive, all $p_i$ sum to~1. The probabilistic truth value of a sentence $S$ is then simply defined as a sum of probabilities of all sets of possible worlds where $S$ is true. Analogically the logical entailment of sentence $S$ from set of sentences ${\cal B}$ (${\cal B} \vdash S$) is generalized as the {\it probabilistic entailment} which is the probability that $S$ is true given the probabilities of sentences in~${\cal B}$ (set of beliefs).
+\par
+Now suppose there are $N$ sentences $S_1, S_2, ... S_N$ which together specify $K$ sets of consistent possible worlds, denote the probabilistic truth values of sentences as a column vector $\Pi=[\pi_1,\pi_2,...,\pi_N]$, denote the probability distribution over the possible worlds as $P=[p_1,p_2,...p_K]$ and denote the actual truth values of sentences associated with each possible world as matrix $V$ of dimensions $N \times K$, where element $v_{ij}$ represents the truth value of sentence $S_i$ in set of possible worlds ${\cal W}_j$. Note that each column of $V$ there represents one set of possible worlds. Calculation of the probabilistic truth values of all sentences then may be concisely represented as a matrix equation
+$$ \Pi = VP \label[pivp] \eqmark$$ 
+
+\par 
+As a concrete example consider a theory with three sentences (taken from Nilsson's original article  [\rcite[Nilsson1986]])
+\begitems \style .
+* $S_1 = \forall x:~ P(x)$,
+* $S_2 = \forall x:~ P(x) \Rightarrow Q(x)$,
+* $S_3 = \forall x:~ Q(x)$.
+\enditems
+\par 
+The sentences define 4 distinct sets of possible worlds with following combinations of consistent truth values:
+% TABULKA
+\midinsert \clabel[consistent_probs]{Consistent truth values}
+\ctable{l|cccc}{
+{} & ${\cal W}_1$ & ${\cal W}_2$ & ${\cal W}_3$ & ${\cal W}_4$\hfil \cr
+\noalign{\kern\hhkern} \crli
+$S_1 = \forall x:~ P(x)$ & {\it true}  & {\it true} & {\it false} & {\it false} \cr
+$S_2 =\forall x:~ P(x) \Rightarrow Q(x)$ & {\it true} & {\it false} & {\it true} & {\it true} \cr
+$S_3 = \forall x:~ Q(x)$ & {\it true} & {\it false} & {\it true} & {\it false} \cr
+}
+\caption/t Consistent combinations of truth values of sentences in possible worlds.
+\endinsert
+
+\par 
+Translation of the table to matrix $V$ is straightforward and omitted. Instead we'll focus on possible range of the truth values $\pi_i$. As we see from Equation \ref[pivp], the value of $\Pi$ depends on probabilities of possible worlds $P$. Now consider at first the extremal case where exactly one possible world achieves probability 1 and the probability of the rest is 0. This obviously results in $\Pi$ being equal to the column of $V$ corresponding with the currently selected set of posible worlds. We can then proceed with modifying probabilities $p_i$ which in turn changes the outcome of all $\pi_i$. The probabilities $p_i$ are however also constrained as their sum must be~1, so the actual attainable truth values $pi_i$ are convex combinations of those achieved for extremal distributions of $p_i$. This is visualized in Figure \ref[probabilistic_polytope]. In this geometrical interpretation the extremal values are vertices of a polytope and all attainable truth values of the sentences lie inside or on boundaries of the polytope. 
+\par 
+Figure \ref[probabilistic_polytope] also shows that it is not straightforward to just arbitrarily set values of $\pi_i$ independently on each other, as their consistent combinations are restricted by the polytope. This doesn't pose a problem in case when the calculation proceeds exactly in the direction of Equation \ref[pivp] and the probability distribution of possible worlds is already specified, because the equation guarantees the result $\Pi$ will be consistent. In practise however the reasoning often works the other way around --- the probabilities of some sentences are assigned first (e.g. as an input from some expert), the sentences then form the knowledge base, and the goal is to find the probabilities of the other sentences, i.e. to evaluate a probabilistic entailment of the sentences with unspecified probabilities from those in the knowledge base. In this setting the actual probability values $P$ of possible worlds may not be even specified in advance as we're just interested in the values of $\Pi$.
+
+\topinsert \clabel[probabilistic_polytope]{Polytope of consistent probabilities}
+\picheight=8cm \cinspic  img/problog_pol.png
+\caption/f Polytope representing consistent truth values for a set of sentences $S_1=\forall x: P(x)$, $S_2 = \forall x: P(x) \Rightarrow Q(x)$ and $S_3 = \forall x: Q(x)$ (the image is a rotated remake of Fig.~2 in (Nilsson, 1986 [\rcite[Nilsson1986]], p. 76))
+\endinsert
+
+\par As an example we will now consider sentences $S_1$ and $S_2$ as the knowledge base and we will calculate the truth value of $S_3$, i.e. perform probabilistic entailment 
+$$\{\forall x: P(x),~ \forall x: P(x) \Rightarrow Q(x)\} \vdash \{\forall x: Q(x)\}.$$
+In accordance with Figure \ref[probabilistic_polytope] we'll assign some consistent truth values to the formulas in the knowledge base, for example $\pi_1 = \pi(S_1) = 0.6$ and $\pi_2 = \pi(S_2) = 0.7$. Then we can use Equation \ref[pivp] to solve for $\pi_3$ as following:
+
+\begitems \style n
+* Add vectors of 1 as the first row into $V$ and $\Pi$. This may be interpreted as adding tautology to the knowledge base, but it is also a way to enforce the constraint $\sum p_i~=~1$.
+$$ \left[ \matrix {1 \cr \Pi} \right] = \left[ \matrix {{\bf 1} \cr V} \right] \cdot P
+~\Rightarrow ~ 
+\left[ \matrix {1 \cr 0.6 \cr 0.7 \cr \pi_3}  \right] = 
+\left[ \matrix {
+1 & 1 & 1 & 1 \cr
+1 & 1 & 0 & 0 \cr
+1 & 0 & 1 & 1 \cr
+1 & 0 & 1 & 0 \cr
+} \right] 
+\cdot
+\left[ \matrix {p_1 \cr p_2 \cr p_3 \cr p_4} \right] 
+$$ 
+* Eliminate the last rows of $V$ and $\Pi$ and calculate $P$ from the modified matrices $V', \Pi'$. Generally the equation is under-determined (and this holds in our example) as the number of possible worlds is usually higher than the number of sentences present in the probabilistic entailment, therefore we should expect the solution for $P$ will not be unique. 
+$$ \Pi' = V'P \Rightarrow
+\left[ \matrix {1 \cr 0.6 \cr 0.7}  \right] = 
+\left[ \matrix {
+1 & 1 & 1 & 1 \cr
+1 & 1 & 0 & 0 \cr
+1 & 0 & 1 & 1 \cr
+} \right] 
+\cdot
+\left[ \matrix {p_1 \cr p_2 \cr p_3 \cr p_4} \right] 
+$$
+Formally we could proceed with multiplying the equation with left pseudo-inverse of $V'$ but in this trivial case we can caluclate $P$ by solving the system of linear equations:
+$$ 
+\eqalign{
+0.6 &= p_1 + p_2  \cr
+ p_1 &= 0.6 - p_2 \cr
+ & \cr
+ p_1 &= 0.3
+ }
+ \qquad
+\eqalign{
+0.7 &= p_1 + p_3 + p_4 \cr
+0.7 &= 0.6 - p_2 + p_3 + p_4 \cr
+p_2 &= - 0.1 + p_3 + p_4 \cr
+p_2 &= 0.3
+ }
+\qquad
+\eqalign{
+1 &= p_1 + p_2 + p_3 + p_4 \cr
+1 &= 0.7 - p_2 \cr
+0.3 &= - 0.1 + p_3 + p_4 \cr
+p_3 + p_4 &= 0.4
+ } 
+ $$
+* Enforce non-negativity constraint $p_i \geq 0$ on possible values of $P$ and check that $P$ may actually represent a probability distribution --- this may not hold if the initial truth values for sentences in knowledge base were assigned inconsistently. In our example the check passes and we find boundaries for $p_3$ and $p_4$ as:
+$$ p_3 \in [0.0, 0.4], ~ p_4 \in [0.0, 0.4] ~, p_3 + p_4 = 0.4 $$
+
+* Denote the last row of $V$ (the one eliminated in step 2) as $S$. Target probability $\pi_3$ then may be calculated as:
+$$ 
+\eqalignno{ \pi_3 &= SP \cr 
+\pi_3 &= \left[ \matrix {1 & 0 & 1 & 0} \right] \cdot \left[ \matrix {0.3 & 0.3 & p_3 & p_4} \right]^T \cr 
+\pi_3 &= 0.3 + p_3 \cr
+\pi_3 &\in [0.3, 0.7] }$$
+\enditems
+
+As we can see, the result of the probabilistic entailment is not unique, but gives us only possible bounds on the values of $\pi_3$. More intuitive picture of the situation is shown in Figure \ref[polytope_cut], where the calculation is described in a geometric way as finding intersection of the polytope of consistent values with planes $\pi_1 = 0.6$ and $\pi_2 = 0.7$.
+\par 
+If we need to select only one solution, we may calculate $\pi_3$ from the probability distribution over the possible worlds with the largest entropy, as this is the one about which we know least prior information [\rcite[Jaynes1957]]. Entropy $H$ of probability distribution ${\bf p}$ is defined as [\rcite[Shannon1948]]:
+$$ H = - \sum p_i \log p_i $$
+
+\par 
+Maximization of $H$ could be solved using the method of Lagrange multipliers, however in our example where $p_1$ and $p_2$ are already set and the only constraint on $p_3$ and $p_4$ is $p_3 + p_4 = 0.4$ we may conclude that the maximal entropy will be reached when $p_3 = p_4$, i.e. $p_3 = 0.2$ and $p_4 = 0.2$. The probabilistic truth value of sentence $S_3$ for this solution is $\pi_3 = 0.3 + 0.2 = 0.5$.
+\topinsert \clabel[polytope_cut]{Cut of polytope for specified }
+\picheight=8cm \cinspic  img/problog_pi3.png
+\caption/f Intersection of the polytope from Figure \ref[probabilistic_polytope] with planes $\pi_1 = 0.6$ (blue) and $\pi_2 = 0.7$ (orange). The red segment is the intersection of the planes and the polytope and represents admissible values for $\pi_3$ (interval [0.3, 0.7]).
+\endinsert
+
+\par 
+Following list summarizes the facts about Nilsson's probabilistic logic that were described in this section:
+\begitems \style .
+* Calculation of probabilistic truth values may be performed in a form of matrix equations, however as the first step all consistent truth values assignments in the possible worlds must be enumareted, and the complexity of the enumeration grows exponentialy in the nubmer of sentences $N$.
+* Assignment of initial probabilistic truth values $\pi_i$ to the sentences in the knowledge base must be performed carefully because a random assignment may also be inconsistent.
+* Even if the initial assignment of $\pi_i$ is consistent, the probabilistic entailment usually doesn't provide a unique solution to probability of entailed sentences. In this case we may choose the solution associated with the distribution over possible worlds $P$ having the largest entropy.
+\enditems
+
+\sec Probabilistic Graphical Models
+This section describes two most commonly employed probabilistic statistical models --- the first is a {\it Bayesian network} and the other one is a {\it Markov random field} (MRF), sometimes called analogically with the first model a {\it Markov network}. The models were devised as an approach to  encode dependency relations between random variables as a graph and then exploiting this knowledge for an efficient evaluation of random fields and their underlying joint probability distributions, also utilizing methods of the graph theory.
+\par
+The models are based on the {\it chain rule} for calculation of joint probability distributions of multiple random variables. The chain rule is a generalization of an observation that the joint probability distribution of two random variables $X,Y$ may be expressed as a product of the marginal probability of one variable and the conditional probability of the other given the first one:
+$$ {\rm P}(X,Y) = {\rm P}(X \mid Y) \cdot {\rm P}(Y)$$
+\par 
+In order to generalize this observation for multiple random variables we only need to apply the rule for one variable at time, always conditioning on the rest of not-yet entered variables, until the last one is reached:
+$$
+\eqalignno{
+{\rm P}(X_1, X_2, ..., X_n) &= {\rm P}(X_1 \mid X_2, ..., X_n) \cdot {\rm P}(X_2, ..., X_n)  & \label[chain_first]\eqmark\cr 
+ &= {\rm P}(X_1 \mid X_2, ..., X_n) \cdot {\rm P}(X_2 \mid X_3, ..., X_n) \cdot {\rm P} (X_3, ..., X_n)  &\label[chain_mid]\eqmark\cr
+ &= ... &\cr
+ &= {\rm P}(X_1 \mid X_2, ..., X_n) \cdot {\rm P}(X_2 \mid X_3, ..., X_n) \cdot ... \cdot {\rm P}(X_n)
+& \label[chain_full]\eqmark}
+$$ 
+\par 
+Actual order of the variables may be of course different as long as the intention of the chain rule is followed. In the thesis we will also use a shorthand notation $p(x_1, x_2, ... x_n)$ for probability of actual assignment of values to random varibles (analogically also for conditional probabilities):
+$$ p(x_1, x_2, ... x_n) = {\rm P}(X_1 = x_1, X_2 = x_2, ... , X_n = x_n) $$
+\par 
+Equation \ref[chain_full] is a good insight into splitting the calculation of the full joint probability distribution into the number of more tractable factors which could be represented by smaller probability tables or functions with less variables than the ones for the full joint probability. However applying the chain rull exactly in the form of Equation \ref[chain_full] doesn't actually considerably reduce the complexity. If we consider discrete random variables and denote the size of the largest domain of values for any $X_i$ as $K$, evaluation of the left hand side requires construction of a probability table with ${\cal O}(K^N)$ elements, while evaluating first  expression on the right hand side requires construction of a conditional probability table for (up to) $K$ possible values of $X_1$ conditioned on ${\cal O}(K^{N-1})$ values for the rest of variables, i.e. the time complexity generally remains the same ${\cal O}(K^N)$.  
+\par 
+The key problem in evaluating the Equation \ref[chain_full] is that each variable is conditioned on all remaining variables, while in practice most of the remaining variables influence the value of the conditional probability only negligible or not at all. This is captured in the concept of {\it conditional independence} [\rcite[Dawid1980]].
+\par\label[def_ci]\definice (Conditional independence) {\it Two random variables $A$, $B$ are conditionally independent given a random variable $C$ (denoted $A \ci B \mid C$) if and only if they are independent in their conditional probability distribution given $C$ for all possible values of A,B,C}:
+$$ {\rm P}(A, B \mid C) = {\rm P}(A \mid C) \cdot {\rm P}(B \mid C) \label[ci_first]\eqmark$$
+\par 
+The defition of conditional independence may be equivalently rephrased as follows --- if we're given conditional probability ${\rm P}(A \mid C)$ and know $A \ci B$, observing $B$ has no effect on the value of the conditional probability, that is:
+$$ A \ci B \mid C ~\Leftrightarrow~ {\rm P}(A \mid B,C) = {\rm P}(A \mid C) \label[ci_eq]\eqmark$$
+\par 
+Conditional independence may be also generalized for sets of random variables --- actually it is more or less sufficient just to interpret random variables $A,B,C$ in Definition \ref[def_ci] as sets of random variables. Equation \ref[ci_eq] then may be used to simplify factors of the joint probability distribution if we can efficiently represent conditional (in)dependencies between variables, because as the equation suggests, all conditionally independent variables then may be ignored and the conditional probability tables may be calculated only w.r.t. conditioning variables. As an example, we may simplify calculation of the probability of $X_1$ in Equation \ref[chain_full] if we know that $X_1$ is conditionally independent on all other variables given $X_2, X_5$ as
+$$ 
+\eqalign{
+{\rm P}(X_1, X_2, ..., X_n) &= {\rm P}(X_1 \mid X_2, ..., X_n) \cdot {\rm P}(X_2 \mid X_3, ..., X_n) \cdot ... \cdot {\rm P}(X_n)\cr
+&= {\rm P}(X_1 \mid X_2, X_5) \cdot {\rm P}(X_2 \mid X_3, ..., X_n) \cdot ... \cdot {\rm P}(X_n)
+}$$
+The process then may be similarly repeated for conditional probability of $X_2$ and another random variables present in the equation.
+\par 
+As a last point before proceeding to the description of two most common probabilistic graphical models --- Bayesian networks and Markov networks --- we should note that conditional independence of random variables is not related to their standard independence. Two random variables may be independent on each other but conditionally dependent given another variable, and vice versa. 
+\par 
+For example of two independent variables that become conditionally dependent let's consider rolling two fair six-sided dice, denote the result of the first die $A$ and the result of the other $B$. As usually in such a case we expect that results of each roll are independent so ${\rm P}(A, B)={\rm P}(A)\cdot{\rm P}(B)$. However, when we also observe variable $C$ which checks if sum of rolls is even or odd, $A$ and $B$ become conditionally dependent given $C$ --- knowing that the sum of rolls is even doesn't provide any additional information without also knowing the result of the other die, so the conditional probability is equal to the marginal (same applies to ${\rm P}(B \mid C)$):
+$${\rm P}(A =a \mid C=c) = {\rm P}(A = a) = {{1}\over{6}}.$$ 
+However if we know that $C=even$ and $A=3$, then we see that $B$ must be also odd, so if we take even value $B=2$, Equation \ref[ci_first] doesn't hold and therefore $A \nci B \mid C$:
+$$
+{\rm P}(A = 3 \mid C=even) \cdot {\rm P}(B=2 \mid C=even) = {{1}\over{6}} \cdot {{1}\over{6}} = {{1}\over{36}} \neq $$ $$ \neq
+{\rm P}(A = 3, B=2, C=even) = 0 
+$$
+%TODO --- second case (dependent variables become cond. independent...)
+\secc Bayesian Networks
+{\it Bayesian network} is a directed acyclic graph (DAG) where vertices represent variables of interest (random variables, parameter models, hypotheses) and oriented edges represent conditional dependencies between the variables; oriented edge $X_u \rightarrow X_v$ specifies that $X_v$ is conditionally dependent on $X_u$. Edge direction however primarily captures the real causal connections and not the actual direction used for computations, because the information necessary for reasoning can still be propagated in both ways [\rcite[Pearl2002]].
+
+\par 
+The most important property of Bayesian networks is that every vertex $X$ is independent from its non-descendants given set of its parent vertices $Pa_X$. Computation of the marginal probability of variable~$X$ is then conditioned on the parent nodes and only requires knowledge of their probabilities:
+$$ {\rm P}(X) = {\rm P}(X \mid Pa_X) \label[bn_1]\eqmark$$
+
+\par 
+Probabilities of parent nodes are usually stored in the child node in a form of conditional probability table. Provided the number of parents for each node is bounded, the number of required conditional distributions for each node grows only linearly in the size of the Bayesian net, which is a considerable improvement over exponential growth for Equation \ref[chain_first]. 
+\par Computation of full joint probability distribution in the Bayesian net is factorized into product of conditional distributions conditioned on parent nodes:
+$$ {\rm P}(X_1, X_2, ..., X_n) = \prod_{i=1}^n {\rm P}(X_i \mid Pa_{X_i})$$
+
+\topinsert \clabel[bayesian_net]{Example of Bayesian net}
+\picheight=4cm \cinspic  img/bn-1.pdf
+\caption/f Graph of Bayesian network of 5 variables.
+\endinsert
+
+\par 
+Let's take as an example the Bayesian network presented in Figure \ref[bayesian_net]. The joint probability distribution of the network may be expressed as:
+$$ {\rm P}(A,B,C,D,E) = {\rm P}(A) \cdot {\rm P}(B \mid A) \cdot {\rm P}(C \mid A) \cdot {\rm P}(D \mid B,C) \cdot {\rm P}(E \mid D) $$
+
+\topinsert \clabel[bn_calculation]{Calculation example in Bayesian net}
+\picheight=3cm \cinspic  img/bn2-2.pdf
+\caption/f Illustration of Bayesian net described in the calcualtion example. {\sbf R} represents raining, {\sbf S} sprinkler and {\sbf W} a wet pavement. Initial situation is captured in the left graph, in the central graph we observe the pavement is wet which influences marginal probabilities of both {\sbf R} and {\sbf S}. In the right graph we find out that it was actually raining, but this information also affects our knowledge about {\sbf S}, because they become dependent after observing {\sbf W}.
+\endinsert
+
+\par 
+More illustrative example which will also point to a not so obvious property of Bayesian networks is illustrated in Figure \ref[bn_calculation]. In the morning, we may observe that the pavement in front of the house is wet. There are two possible causes for this --- it may have been raining during the night or early in the morning the sprinkler on the grass was on. The sprinkler should be watering the grass every morning, but it is faulty and works more or less randomly. It also doesn't have any detector to check whether the grass is already wet, so it may also turn on even if it was raining. We have these prior probabilities for the sprinkler ($S$) and the raining ($R$):
+$$ \eqalign{
+{\rm P}(S = on) &= 0.5 \cr
+{\rm P}(R = true) &= 0.2 
+}$$
+The conditional probabilities for observing wet pavement ($W$) given the other two events are stated as follows:
+$$
+\eqalign{
+{\rm P}(W = {\it wet} \mid S = {\it on}, R = {\it true}) &= 0.9 \cr
+{\rm P}(W = {\it wet} \mid S = {\it on}, R = {\it false}) &= 0.7 \cr
+{\rm P}(W = {\it wet} \mid S = {\it off}, R = {\it true}) &= 0.6 \cr
+{\rm P}(W = {\it wet} \mid S = {\it off}, R = {\it false}) &= 0.01
+}
+$$
+\par 
+Now in the morning we actually observe the pavement is wet and we may want to evaluate the posterior probability that the sprinkler was on. This may be done using Bayes' theorem:
+$$ {\rm P}(S \mid W) = {{{\rm P}(W \mid S) \cdot {\rm P}(S)}\over{{\rm P}(W)}} \label[bay-ex]\eqmark$$
+\par 
+The denominator is evaluated by marginalizing over $R$, $S$:
+$$ \eqalign { {\rm P}(W = {\it wet}) &= \sum_{s \in \{{\it on}, {\it off}\}}\sum_{r \in \{{\it true}, {\it false}\}} {\rm P}(W = {\it wet} \mid S=s, R=r) \cdot {\rm P}(S=s) \cdot {\rm P}(R = r) \cr
+&= 0.434}$$
+\par 
+Similarly for conditional probability ${\rm P}(W \mid S)$:
+$$ {\rm P}(W = {\it wet} \mid S = {\it on}) = \sum_{r \in \{{\it true}, {\it false}\}} {\rm P}(W = {\it wet} \mid S = {\it on}, R = r) \cdot {\rm P}(R = r) = 0.74$$
+\par So plugging all the numbers into Equation \ref[bay-ex] we get:
+$$ {\rm P}(S = {\it on} \mid W = {\it wet}) = {{0.74 \cdot 0.5}\over{0.434}} \,\dot{=}\, 0.853$$
+\par 
+We see that ${\rm P}(S = {\it on} \mid W = {\it wet}) > {\rm P}(S = {\it on})$ so observing that the pavement is wet makes it more likely that it the sprinkler was on, which is something we would intuitively expect. Now let's see if something changes when we find out that it was raining in the night (e.g. from a weather report). The posterior probability for the sprinkler changes to:
+$$\eqalign {
+ {\rm P}(S \mid W,R) &= {
+{{\rm P}(W \mid S, R) \cdot {\rm P}(S) \cdot {\rm P}(R)}
+\over
+{\sum_{s \in S} {\rm P}(W \mid S,R) \cdot {\rm P}(S) \cdot {\rm P}(R)}
+} 
+\cr
+{\rm P}(S = {\it on} \mid W = {\it wet},R = {\it true}) &= {
+{{\rm P}(W = {\it wet} \mid S = {\it on}, R={\it true}) \cdot {\rm P}(S = {\it on})}
+\over 
+{\sum_{s} {\rm P}(W = {\it wet} \mid S = s, R={\it true}) \cdot {\rm P}(S = s)}
+} = 0.6
+} 
+$$
+\par 
+After observing that it was raining the probibility that sprinkler was on drops, even though initially these two variables were independent. They however became coupled when we observed the actual value of their common child.
+\par 
+As we can see from the previous example, even though the Bayesian network is a directed graphical model, the information may still flow in any direction when reasoning and evidence provided in the descendant node actually influenced the marginal probability of the parent node. Earlier in the beginning of the section it was declared that a node is conditionally independent from its non-descendants given its parents. This is indeed true, but we may be actually also interested in which nodes actually separate the node from the rest of the network, so we know which nodes may influence reasoning about the node and which are irrelevant.
+\par 
+Identification of separating set of nodes may be defined in terms of {\it d-separation}, which is based on a notion of {\it active paths}. First we should consider what configuration of nodes w.r.t. directed edges may be observed over triplets of nodes [\rcite[Koleshov2020]]:
+\begitems \style n
+* {\it Cascade}: $A \rightarrow B \rightarrow C$ or $A \leftarrow B \leftarrow C$\nl
+If $B$ is observed, then $ A \ci C \mid B$, because we can determine output of $C$ solely on $B$ and $A$ doesn't influence it. If $B$ is unobserved, then $A \nci C$, because observing $A$ provides information about $B$ and in turn we may also reason about $C$.
+* {\it Common parent}: $A \leftarrow B \rightarrow C$\nl
+Reasoning is actually the same as above --- if $B$ is observed, $A \ci C \mid B$, otherwise $A \nci C$.
+* {\it V-structure}: $A \rightarrow B \leftarrow C$\nl
+The results in this case are opposite to previous ones --- if the common descendant $B$ is {\it unobserved}, then parents are independent --- $A \ci C$. But when $B$ is observed, then $A \nci C \mid B$. This is also called {\it explaining away}.
+\enditems
+\par 
+These checks may be recursively applied on larger sets of variables in the graph, leading to a notion of {\it active paths} in Bayesian network. An undirected path in the Bayesian network is active given a set of observed variables $O$ if for every consecutive triple of variables $X,Y,Z$ one of the following holds:
+\begitems \style .
+* $X \rightarrow Y \rightarrow Z$ and Y is unobserved ($Y \not\in O$),
+* $X \leftarrow Y \leftarrow Z$ and Y is unobserved,
+* $X \leftarrow Y \rightarrow Z$ and Y is unobserved,
+* $X \rightarrow Y \leftarrow Z$ and Y is or {\it any of its descendants} is observed.
+\enditems
+\par 
+The independence of sets in Bayesian networks is then specified using {\it d-separation}. Two sets of variables $A,B$ are d-separated given set $O$ if there is no active path connecting $A$ and $B$ given $O$. Then set $O$ is also a separating set of sets $A,B$. Separating set is not actually unique --- adding a variable which is not in $A$ or $B$ into the separating set still yields a separating set. The minimal separating set is a separating set from which no variable can be removed without violating d-separation property. In Bayesian networks, the minimal separating set for a variable from the rest of graph consists from variable's parents, its immediate children and all other parents of these immediate children.
+
+\secc Markov Random Fields
+\par
+{\it Markov random field} (MRF) or {\it Markov network} is a graphical probabilistic model that represents dependencies between variables as an undirected graph. An MRF may be also cyclic, therefore it may, unlike Bayesian networks, conveniently represent cyclic dependencies. Also the notion of separating set for a node is simpler in MRFs as it consists only from all neighbours of the node in question~[\rcite[Pearl1988]].
+
+\topinsert \clabel[mrf]{Example of Markov random field}
+\picheight=4cm \cinspic  img/mrf-g.pdf
+\caption/f Graph of Markov random field of 5 variables with two 3-cliques $\{A,B,C\}$ and $\{B,C,D\}$ and one 2-clique $\{D,E\}$.
+\endinsert
+
+\par If graph $G = (V,E)$ represents an MRF, it must satisfy following three Markov properties, ordered from the weakest to the strongest (variable represented by vertex $v$ is denoted as $X_v$) [\rcite[wikiMrf]]:
+\begitems \style n
+* {\sbf Pairwise Markov property}:\nl Any two non-adjacent variables are conditionally independent given all other variables:
+$$ X_v \ci X_u \mid X_{V\,\setminus\,\{u,v\}}$$
+* {\sbf Local Markov property}:\nl A variable is conditionally independent of all other variables given its neighbors:
+$$ X_v \ci X_{V\,\setminus\,N[v]} \mid X_{V\,\setminus\,N(v)}$$
+where $N(v)$ is the set of neighbors of $v$ and $N[v] = v \cup N(v)$ is the closed neighbourhood of $v$.
+* {\sbf Global Markov property}:\nl Any two subsets of variables are conditionally independent given a separating subset:
+$$ X_A \ci X_B \mid X_S$$
+where $X_A, X_B$ are sets of vertices and $X_S$ is their separating subset (i.e. all paths between a node from $X_A$ to a node in $X_B$ pass through a node in $X_S$).
+\enditems
+\par All three Markov properties are actually equivalent if the underlying probability distribution induced by variables in the graph is strictly positive.
+
+\par Computation of the full joint probability distribution in MRFs can be factorized similarly to Bayesian networks as a product of quantities over sets of variables. Unlike the Bayesian networks the quantity is not represented in a form of probability tables, but as a {\it potential function}. The factorization is then performed over maximal cliques of a graph (graph clique is a fully-connected subgraph of the graph\fnote{We may prepend a clique with a number of vertices present in it, i.e. 3-clique, 4-clique etc. 2-clique is an edge and 1-clique is just a vertex}): 
+$$ p(x_1, x_2, ... , x_n) = {{1}\over{Z}} \prod_{C\,\in\,cl(G)} \phi(C),$$
+where $cl(G)$ is the set of maximal cliques of graph $G$, $\phi(C)$ is a potential function associated with assignments to all variables (vertices) in clique $C$, and $Z$ is the partition function. This function ensures that the result is actually a probability distribution by summing potential functions for all possible configurations of MRF:
+$$ Z = \sum_{x_1, x_2 ... x_n} \prod_{C\,\in\,cl(G)} \phi(C) $$
+\par As an actual example we show factorization of MRF presented in Figure~\ref[mrf], the set of maximal cliques is $cl(G)=\{\{A,B,C\},\{B,C,D\},\{D,E\}\}$ (note that if there was an edge connecting $A,D$ the 3-cliques would be replaced with a 4-clique $\{A,B,C,D\}$) and the probability of a configuration factorizes into:
+$$ p(a,b,c,d,e) = {{1}\over{Z}} \cdot \phi(a,b,c) \cdot \phi(b,c,d) \cdot \phi(d,e)$$
+\par 
+Two problems however arise when we try to perform exact inference in MRFs. The first one is that listing all maximal cliques in the graph is NP-complete problem (it is also listed in Karp's 21 NP-complete problems in formulation where we try do detect any clique of size~$k$~[\rcite[Karp1972]]). This may be overcome by the fact that the structure of MRFs is usually not random, but it is crafted intentionally, so the structure of maximal cliques is usually known beforehand and it is not needed to detect them. The other problem is that evaluating the partition function requires summing over all possible assignments, which is in general NP-hard. This problem may not be overcome so easily and so the exact inference in MRFs is generally intractable, even though there are classes of MRFs that may be computed efficiently. 
+% TODO jake tridy....
+
+\topinsert \clabel[moralization]{Moralization of Bayesian network}
+\picheight=4cm \cinspic  img/moralization.pdf
+\caption/f Moralization of a Bayesian network (left) into a Markov random field (right). 
+\endinsert
+
+\par There are also procedures to transform Bayesian networks into MRFs and vice versa. As a first step in transforming Bayesian network into MRF we only need to trivially substitute every directed edge with an undirected one. As a second step we need to add an edge between all vertices, which share a direct descendant and are disconnected in the Bayesian network. This is called {\it moralization} as it enforces a relation between parent nodes (a ‘‘marriage’’, though it may easily result in a polygamy if the node has more than 2 parents). If the second step is omitted, we lose information that the value of the child node is actually dependent on values of all its parents simultaneously. The procedure is illustrated in Figure \ref[moralization]. Potential functions for each clique then correspond to joint probability of all variables in the clique, which may be in turn calculated from the conditional probability table associated with the leaf node of the clique by Equation~\ref[bn_1]. The partition function of such a transformed net is trivially~1 (as all probabilities in the Bayesian network must sum to~1). The converse process of transforming an MRF into a Bayesian net is called {\it triangulation}, but is seldom used, as it is usually intractable (it often results in an almost fully connected DAG).
+% \secc Inference in PGM
+% TODO something bout inference algorithms (MCMC, variable elimination, message passing)
+
+\chap Markov Logic Networks
+This chapter describes {\it Markov logic networks} (MLN), a probabilistic logic framework used in the statistical relational learning (SRL). Markov logic networks encode statistical regularities in a from of weighted logical formulas. The following section provides definitions of MLNs and related concepts, then basic properties, means of inference and standard learning tasks in MLNs are discussed. Finally we'll focus on the key concept of the thesis --- {\it relational marginal polytope} which originates from relational marginal problem --- a task concerned with finding the maximum-entropy probability distribution satisfying specified marginal probabilities.
+\sec Definition
+The concept of Markov logic networks first appeared in the paper of Richardson and Domingos in 2006~[\rcite[Richardson2006]]. The rationale behind their proposal is that when we model a problem using first-order logic formulas (these form a knowledge base), the formulas are actually hard-constraints and any potential world that violates just one of them is consequently impossible. This behaviour however may not be always desirable as often a formula that doesn't hold in all cases may still capture useful information about modelled relationships. In order to soften the constraint checking a weight is associated with each formula. The weight should represent how important the constraint is in the model --- the higher the wieght, the higher the importance of the constraint. In this setting the world violating a constraint doesn't become instantly impossible, only less probable. If the world violates higher number of constraints or if it violates more important ones, the world's probability decreases proportionally. 
+\par\definice (Markov logic network): {\it A Markov logic network (MLN) is a set of weighted first-order logic formulas 
+$(\alpha, w)$ where $w \in \bbchar R\/$ and $\alpha$ is function-free and quantifier-free first-order logic formula.}
+\par MLN $\Phi$ induces a probability distribution over a set of possible worlds $\Omega$:
+
+$$ {\tt for~} \omega \in \Omega: ~ p_{\Phi}(\omega) = {{1}\over{Z}} ~ {\tt exp}\left( {\sum_{(\alpha, w) \in \Phi} {w ~\cdot~ N(\alpha,\omega) }} \right) \label[mln_eq1]\eqmark $$
+
+In this equation $p_{\Phi}(\omega)$ denotes probability of observing possible world $\omega$, $N(\alpha,\omega)$ is total number of groundings of formula~$\alpha$ that are satisfied in $\omega$ relative to a finite set of constants $\Delta$ (called the domain) and~$Z$ is the {\em partition function} that normalizes the result so it forms a probability distribution similarly as in MRFs. Presence of the normalizing term $Z$ draws exact inference in MLNs generally intractable in the same way as in MRFs, as its evaluation requires summation over all possible worlds whose number is exponential in the size of domain.
+\par 
+An MLN can be created from a first-order logic knowledge base just by assigning arbitrary weights to each formula in the KB. The first-order logic is actually a special case of MLN where all weights are infinite, i.e. any violation of a formula renders the associated world impossible. The probability distribution over satisfiable possible worlds in this case is uniform. The weight of the formula can be interpreted as a log-odd between observing a world where the formula holds and a world where it doesn't, assuming all remaining weights are equal.
+% TODO usage, expressivity (FOL)
+
+\secc Relation to MRF
+Markov logic networks are closely related to Markov random fields --- grounding an MLN with respect to a domain results in an instance of a MRF and in this sense MLNs may be considered templates for a variety of MRFs. The resulting MRFs may vary significantly in size but they will share common structures.
+The procedure for grounding MLN into MRF was described in the initial paper by Richardson and Domingos [\rcite[Richardson2006]]). An instance of MRF~$M_{\Phi, \Delta}$ may be grounded from MLN~$\Phi$ with respect to the domain~$\Delta$ this way:
+\begitems \style n
+* $M_{\Phi,\Delta}$ contains one binary node for each possible grounding of each
+predicate appearing in $\Phi$. The value of the node is 1 if the ground atom
+is true, and 0 otherwise.
+* $M_{\Phi,\Delta}$ contains one feature for each possible grounding of each formula
+$\alpha_i$ in MLN~$\Phi$. The value of this feature is 1 if the ground formula is true, and 0
+otherwise. The weight of the feature is the $w_i$ associated with $\alpha_i$ in MLN~$\Phi$.
+\enditems
+
+%\secc Expressivity of MLNs
+
+
+\sec Inference
+Exact inference in MLNs is in general intractable for similar reasons as in MRFs --- the partition function $Z$ is calculated as a sum of terms over all possible worlds, and the number of all possible worlds in general grows exponentially w.r.t the size of domain~$|\Delta|$. 
+\par Calculation of the partition function may be converted to the {\it weighted first-order model count} problem (WFOMC)[\rcite[vdBroeck2011]]:
+\par\definice (WFOMC): {\it Let $w(P)$ and $\overline{w}(P)$ be functions from predicates to real numbers ($w$ and $\overline{w}$ are called weight functions) and let $\Phi$ be a first-order theory. Then}
+$$
+{\rm WFOMC}(\Phi, w, \overline{w}) = \sum_{\omega \in \Omega: \omega \models \Phi} \prod_{a \in {\cal P}(\omega)} w(Pred(a)) \prod_{a \in {\cal N}(\omega)} \overline{w}(Pred(a))
+$$
+{\it where ${\cal P}(\omega$) and ${\cal N}(\omega)$ denote the positive literals that are true and false in $\omega$, respectively, and Pred(a) denotes the predicate of a (e.g. Pred(friends(Alice, Bob)) = friends)}.
+\par 
+The evaluation of WFOMC then proceeds with addition of a formula $\xi_i$ for every weighted formula~$(\alpha_i, w_i)$ in~$\Phi$ whose free variables are exactly $x_1, x_2,...x_k$ :
+$$ \forall x_1, ..., x_k: \xi_i(x_1, ... , x_k) \Leftrightarrow \alpha_i(x_1, ... , x_k)$$
+% TODO why do we need xi? Example of calculation
+\par 
+Then we set $w(\xi_i) = {\rm exp}(w_i)$, $\overline{w}(\xi_i) = 1$ for all new predicates and $w(\alpha_i) = 1$ and $\overline{w}(\alpha_i) = 1$ for the original predicates. If we denote the resulting set of predicates $\Gamma$, it will turn out that actually ${\rm WFOMC}(\Gamma,w,\overline{w}) = Z$. WFOMC may be also easily used for evaluation of the marginal probability of query~$q$ under $\Gamma$:
+$${\rm P}_{\Phi,\Omega}(q) = {{{\rm WFOMC}(\Gamma \cup \{q\}, w, \overline{w})}\over{{\rm WFOMC}(\Gamma, w, \overline{w})}}$$
+\par 
+The WFOMC however doesn't change asymptotical complexity of computation of the partition function w.r.t. the domain (it remains exponential). However there are classes of MLNs where inference may be performed more efficiently, in polynomial time w.r.t. to the size of the domain. These problems are called {\it domain liftable}.
+\par\definice (Domain liftability) {\it An algorithm for computing} WFOMC {\it is
+said to be domain-liftable if it runs in time polynomial in the size of the domain.}
+\par
+Example of domain-liftable MLN instances are MLNs where each predicate contains at most two variables~[\rcite[KuzelkaKun]].
+
+\sec Relational marginal polytopes
+This section introduces {\it relational marginal polytopes} (RMP) with which approximation the thesis is mainly concerned. RMPs emerge as a set of feasible solutions to the {\it relational marginal problems} which try to find weights for a maximum-entropy distribution over the possible worlds w.r.t. statistical marginal probabilities of formulas in the MLN. 
+
+\secc Relational marginal problem
+\par 
+The total number of satisfiable formula groundings $N(\alpha, \omega)$ in Equation~\ref[mln_eq1]  presents the absolute number of admissible groundings. It may be however more convenient to express this quantity relative to the size of the number of possible groundings. This quantity is called {\it formula statistic} w.r.t. the possible world $\omega$:
+\par\definice (Formula statistic) {\it Let $\alpha$ be a quantifier-free first-order logic formula with $k$ variables $\{x_1, ... x_k\}$. Its formula statistic w.r.t. a possible world $\omega$ is defined as}:
+
+$$ Q_\omega(\alpha) =  \left( {{|\Delta|}\over{k}} \right) ^ {-1} ~\cdot~
+(k!)^{-1} ~ \cdot~ N(\alpha, \omega) \eqmark$$
+
+\par 
+There $|\Delta|$ denotes size of the domain and $k$ denotes arity of predicate $\alpha$. Intuitively the formula statistic represents the probability that a random injective substitution of variables that ground formula $\alpha$ will be satisfied in the possible world $\omega$ if we draw the substitution randomly from the uniform distribution.
+\par 
+With notion of formula statistics, we may continue with a defintion of the {\em relational marginal problem}. 
+
+\par\definice (Relational marginal problem): {\it The relational marginal problem is a convex optimization with the following formulation}: 
+$$ 
+{\tt min} \sum_{P_\omega: \omega \in \Omega}~ P_\omega ~{\rm log} ~P_\omega ~~{\rm s.t.} \label[rmprob_eq1]\eqmark $$ 
+$$
+\eqalignno {
+\forall i: 1, ..., l: \sum_{\omega \in \Omega} P_\omega ~\cdot~ Q_\omega(\alpha_i) &= \theta_i &\label[rmprob_eq2]\eqmark \cr
+\forall \omega \in \Omega: P_\omega \geq 0, \sum_{\omega \in \Omega} P_\omega &= 1 &\label[rmprob_eq3]\eqmark
+}
+$$
+
+where $P_\omega$ denotes the probability of possible world $\omega$, $Q(\alpha_i)$ is formula statistic associated with formula $\alpha_i$ in the particular possible world, and $\theta_1, ... \theta_k$ are the target expected values for each formula statistics, also called the {\it relational marginals} (hence the name of the task).
+\par 
+To provide a more thorough analysis of the formulation --- Equation~\ref[rmprob_eq1] minimizes {\em negative} entropy of the probability distribution over the possible worlds, Equation~\ref[rmprob_eq2] represents constraints specified by the relational marginals and the last Equation~\ref[rmprob_eq3] ensures the result of the task is a probability distribution. Assuming strictly positive solution, the optimal solution is:
+
+$$ P_\omega = p_{\Phi}(\omega) = {{1}\over{Z}} ~ {\tt exp}\left( {\sum_{(\alpha_i, \lambda_i) \in \Phi} {\lambda_i ~\cdot~ Q_\omega(\alpha) }} \right)  $$
+
+where $\lambda_i$ are obtained by maximizing dual criterion which is incidentally MLN's log-likelihood w.r.t. some training example whose statistics are equal to expected ones:
+$$ L(\lambda) = \sum_{\alpha_i} \lambda_i \cdot \theta_i - {\rm log} \sum_{\omega in \Omega} 
+e ^ {\sum_{\alpha_i} \lambda_i \cdot Q_\omega(\alpha_i)}$$
+Due to the duality if we're able to efficiently solve relational marginal problems, we can also efficiently solve maximum likelihood estimation of MLN. However in order to compute values of $\lambda_i$ we have to calculate the gradient of~$L$ which involves computation of the partition function. Solving the relational marginal problem is therefore as hard as evaluating the partition function, which is generally \#P-hard.
+
+\secc RMP Definitions
+\par
+When solving relational marginal problems it is possible to encounter a relational marginals that define expected values of formula statistics which are actually not realizable on the domain of the specified size (or on a domain of any size at all). Consider following example, which describes edges and triangles present in a graph in terms of propositional logic~[\rcite[KuzelkaKun]]:
+\par\example : Consider a MLN $\Phi$ consisting of following formulas (weight omitted):
+\begitems \style .
+* $\phi: edge(x_1, x_2)$,
+* $\psi: edge(x_1, x_2) \land edge(x_2, x_3) \land (x_1, x_3)$.
+* $\Delta = \{c_1, c_2... c_{100}\}$
+\enditems 
+Now when considering expected values of formula statistics ${\bbchar{E}}[(Q_\omega(\phi))] = 0$ and ${\bbchar{E}}[(Q_\omega(\psi))] = 0.5$, we can easily see that no possible world can conform to this distribution as there simply cannot be even one triangle in a graph without edges. Values of statistics corresponding to some actual probability distributions form so called {\it relational marginal polytope}~[\rcite[KuzelkaAISTATS]]:
+\par\definice (Relational marginal polytope): {\it Let $\Omega$ be the set of possible worlds on domain $\Delta$ and $\Phi= (\alpha_1, ... , \alpha_m)$ be a list of formulas. The relational marginal polytope ${\sbf RMP}(\Phi, \Delta)$ w.r.t. $\Phi$ is defined as}:
+$$ {\sbf RMP}(\Phi, \Delta) = \{
+\exists {\rm ~distribution~on~} \Omega {\rm ~s.t.~} {\bbchar E}[Q(\alpha_1, \omega)] = x_1 \land ... \land {\bbchar E}[Q(\alpha_m, \omega)] = x_m \}.$$
+\par 
+Relational marginal polytopes form w.r.t. list of formulas $(\alpha_1, ..., \alpha_l)$ a convex hull of a set: 
+$$\{(Q_\omega(\alpha_1), ..., Q_\omega(\alpha_l))~|~\omega \in \Omega \}.$$ 
+\par Important property of RMPs is that RMPs associated with larger domains are {\it subsets} of RMPs associated with domains with less elements. Furthermore, using a notion of $\eta$-{\it interiority} a bound can be provided on the maximal difference between any points in these polytopes.
+\par\definice ($\eta$-interiority [\rcite[KuzelkaKun]]): {\it Let $\eta > 0$,} ${\bf P}$ {\it be a polytope and $A^={\sbf x} = {\sbf c}$ be the maximal linearly independent system of linear equations that hold for the vertices of} ${\bf P}$. {\it A point $\theta$ is said to be in the $\eta$-interior of} ${\bf P}$ {\it if $\{\theta' | A^= \theta' = {\sbf c}, \parallel\theta' - \theta\parallel \leq \eta\} \subseteq {\bf P}$}.
+
+\topinsert \clabel[rmp_examples]{Examples of RMP}
+\picheight=7.5cm \cinspic  img/rmp_examples.png
+\caption/f Examples of RMP w.r.t. domain of size 3 for two MLNs (both under unique names assumption). Blue area represents RMP, red points denote actual formula statistics $Q$ that can be achieved in the MLN. {\sbf Left} $A= a(X,Y)$, $\phi~=~a(X,Y)~\lor~\neg~a(Y,X)$. {\sbf Right}~$B=b(X,Y)$, $\psi~=~b(X,Y)~\land~b(Y,X)$.
+\endinsert
+
+\par 
+Equivalently point $y$ is in $\eta$-interior of polytope ${\bf P}$ if there a ball with radius~$\eta$ centered in $y$ is subset of the polytope. Regardless on the definition we use, detecting if a point is in $\eta$-interior of RMP is NP problem.
+
+\par 
+Sometimes it is more convenient use an {\it integer relational marginal polytope}, which is a convex hull of all realizable groundings count:
+$$ {\bf IRMP} = \{N(\alpha_1, \omega), ..., N(\alpha_m, \omega) : \omega \in \Omega \} \label[irmp]\eqmark$$
+Both types of relational polytopes are interchangeable as there is a straightforward relation between number of groundings and the formula statistics: 
+$$Q(\alpha_i, \omega) = |\Delta|^{-|vars(\alpha_i)} \cdot N(\alpha_i, \omega) $$
+% Examples
+%
+% IRMP
+% AISTATS algorithm
+\chap Implementation
+\par 
+This sections describes programmatical implementation of the thesis.
+\sec Realizability of statistics
+\par
+Realizability of expected formula statistics for a domain of specified size may be checked by integer linear program. As only the feasibility of constraints is checked, the program doesn't actually perform any optimization, so the constant is used as the objective function. Also total number of satisfied formula groundings $N(\alpha, \omega)$ with respect to domain size must be used instead of formula statistics $Q_{\omega}(\alpha)$. The program expects as input a size of domain $|\Delta|$, a list of function-free quantifier-free first-order formulas $\Phi$ in CNF, and an expected number of groundings $N_i$ for each formula $\alpha_i \in \Phi$.
+\par 
+For the formulation of the ILP we also define sets:
+\begitems \style .
+* $A$ -- set of all grounded atoms
+* $Lit^+_{\nu, \alpha}$, $Lit^-_{\nu, \alpha}$ -- sets of all positive/negative ground  literals created by a substitution $\nu$ from formula $\alpha$
+* $Cl_{\nu, \alpha}$ -- set of all clauses created by a substitution $\nu$ from formula $\alpha$.
+\enditems
+The formulation of the ILP is as follows:
+$$
+{\rm max}~ 0 ~~{\rm s.t.}
+$$
+$$
+\eqalign{
+	\forall {\rm ~ground~atoms~} a_i \in A : ~ a_i \in \{0, 1\},~ l^+_i &= a_i,~ l^-_i = 1 - a_i \cr
+	\forall {\rm ~clauses,~substitution~\nu}~ c_{j,\nu, \alpha} \in Cl_{\nu, \alpha}:~ c_{j,\nu, \alpha} &= {\rm max} \{ l \in Lit^+_{\nu, \alpha} \cup Lit^-_{\nu, \alpha}\} \cr
+	\forall {\rm ~formulas,~substition~\nu}~ f_{k,\nu} \in F_\nu: 
+		f_{k,\nu} &= {\rm min}\{ c_{j,\nu, \alpha} | ~ c_{j,\nu, f} \in Cl_{\nu, f} \} \cr
+	\forall ~F_i : ~N_i &= \sum_\nu f_{i, \nu}
+}
+$$
+\par 
+Definition might look a little bit complicated, but description of the steps actually performed should make it more clear:
+\begitems \style n
+* Binary variable is created for every possible ground atom present in $\Phi$ and $\Phi_0$.
+* Another binary variable is created for every positive and negative literals, for positive it is equal to underlying ground atom $a$, for negative it is $1 - a$. 
+* Variables are created for all possible substitutions of clauses, taking maximum value from appropriate positive/negative literal variables (this represents disjunctions of literals in the CNF).
+* Analogically variables representing whole CNF formulas for all possible substitutions are created, but now taking the minimum value of the variables associated with the CNF (this represents conjunctions of clauses in the CNF)
+* Finally a sum of CNF formula variables is set to be equal to expected statistic. 
+\enditems 
+ILP solver (specifically gurobi~[\rcite[gurobi]]) checks feasibility of generated constraints and if no violation is found, it also returns an assignment of all variables which in turn represent one of vaild possible worlds. However it should be noted, that the program doesn't actually perform containment test for underlying IRMP. As is specified in the definition of IRMP (Equation~\ref[irmp]), the IRMP is a convex hull of feasible formula grounding counts, therefore the point may be still contained in the IRMP even if it represents infeasible grounding count as we cannot reject the possibility that it is indeed in the convex hull of feasible points. But we can at least conclude that after in case of failure, the point is not a vertex of IRMP.
+\par 
+This model is straightforward, but its performance is not overwhelming. Generally it creates ${\cal{O}}(n^k)$ ground atom variables (where $n$ is domain size and $k$ the highest number of variables in atoms) for every possible substitution and similarly for clauses and formulas. Even though number of variables and constraints remains polynomial in $n$, their number still grows steadily. We should also note that ILP is an NP-hard problem in general, so we cannot expect that this model will be efficient in general.
+
+\chap Conclusion
+The goals of the thesis were met only partially at most. An exact ILP program for testing feasibility of the marginal problem constraints was implemented in Python using Gurobi solver. This may be a part of actually implemented heuristical algorithm, when an exact solution for a small subset of vertices will be needed.
+
+\bibchap
+\usebbl/c biblografie
+
+\app List of abbreviations
+\par 
+\medskip
+\bgroup \leftskip=6.3em
+\abbrv[CNF] conjuctive normal form
+\abbrv[FOL] first-order logic (also predicate logic)
+\abbrv[ILP] integer linear programming
+\abbrv[KB] knowledge base
+\abbrv[MLN] Markov logic network
+\abbrv[MRF] Markov random field (also Markov network)
+\par\egroup
+
+\app Supplementary data and documentation
+
+\sec Source code
+Source code of the thesis is publicly available at \url{https://github.com/kozakja4/m_thesis}
+
+\sec Content of CD
+"root"\nl
+" |_ Code" \tocdotfill source code folder\nl
+" |_ img"\tocdotfill figures including their TikZ or Python definitions\nl
+" |_ text.pdf"\tocdotfill text of the thesis\nl
+
+\bye

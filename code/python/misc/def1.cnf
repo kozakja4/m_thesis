@@ -1,0 +1,3 @@
+Edge(X,Y)
+Edge(X,Y) AND Edge(Y,Z) AND Edge(Z,X)
+(Edge(X,Y) OR NOT Friends(Y,X) OR Friends(X,Y)) AND (Edge(Y,X) OR NOT Friends(X,Y))
