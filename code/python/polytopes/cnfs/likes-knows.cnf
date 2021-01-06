@@ -1,0 +1,2 @@
+1 likes(X,Y) OR NOT knows(X,Y)
+3 NOT knows(X,Y) OR NOT likes(X,Y) OR friends(X,Y)

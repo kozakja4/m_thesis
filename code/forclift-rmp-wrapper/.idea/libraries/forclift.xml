@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="forclift">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/libs/forclift.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

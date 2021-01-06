@@ -1,0 +1,2 @@
+1 friends(X,Y)
+1.2 NOT friends(X,Y) OR NOT friends(X,Z) OR friends(Y,Z)

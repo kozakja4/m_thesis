@@ -1,4 +1,5 @@
-from typing import List, Dict
+from functools import total_ordering
+from typing import List, Dict, Set
 
 
 class Term:
@@ -7,6 +8,7 @@ class Term:
         self.name = name
 
 
+@total_ordering
 class Constant(Term):
 
     def __init__(self, name: str):
@@ -16,37 +18,45 @@ class Constant(Term):
         return self.name
 
     def __repr__(self):
-        return "Constant(name='{}')".format(self.name)
+        return f"Constant(name='{self.name}')"
 
     def __eq__(self, other):
         if isinstance(other, Constant):
             return self.name == other.name
         return False
 
+    def __lt__(self, other):
+        return self.name < other.name
+
     def __hash__(self):
         return hash(self.name)
 
 
+@total_ordering
 class Variable(Term):
 
     def __init__(self, name: str):
         super().__init__(name)
 
     def __str__(self):
-        return self.name
+        return self.name.lower()
 
     def __repr__(self):
-        return "Variable(name='{}')".format(self.name)
+        return f"Variable(name='{self.name}')"
 
     def __eq__(self, other):
         if isinstance(other, Variable):
             return self.name == other.name
         return False
 
+    def __lt__(self, other):
+        return self.name < other.name
+
     def __hash__(self):
         return hash(self.name)
 
 
+@total_ordering
 class Predicate:
 
     def __init__(self, name: str, arity: int):
@@ -54,15 +64,24 @@ class Predicate:
         self.arity = arity
 
     def __str__(self):
-        return "{name}/{arity}".format(name=self.name, arity=self.arity)
+        return f"{self.name}/{self.arity}"
 
     def __repr__(self):
-        return "Predicate(name={name}, arity={arity})".format(name=self.name, arity=self.arity)
+        return f"Predicate(name={self.name}, arity={self.arity})"
 
     def __eq__(self, other):
         if isinstance(other, Predicate):
             return self.arity == other.arity and self.name == other.name
         return False
+
+    def __lt__(self, other):
+        return (self.name, self.arity) < (other.name, other.arity)
+
+    def __hash__(self):
+        return hash((self.name, self.arity))
+
+    def with_domain(self, domain: str) -> str:
+        return f"{self.name}({','.join(domain for _ in range(self.arity))})"
 
 
 class Atom:
@@ -76,11 +95,11 @@ class Atom:
 
     def renamed_str(self) -> str:
         vlist = ",".join(v.name for v in self.renamed_vars)
-        return "{name}({vlist})".format(name=self.predicate.name, vlist=vlist)
+        return f"{self.predicate.name}({vlist})"
 
     def assignment_name(self, assignment: Dict[str, str]) -> str:
         vlist = ",".join(assignment[v.name].name if isinstance(v, Variable) else v.name for v in self.variables)
-        return "{name}({vlist})".format(name=self.predicate.name, vlist=vlist)
+        return f"{self.predicate.name}({vlist})"
 
     def _rename_vars(self) -> (List[Term], int, int):
         mapping = {}
@@ -100,13 +119,11 @@ class Atom:
         return nvlist, dv, dc
 
     def __str__(self):
-        vlist = ",".join(v.name for v in self.variables)
-        return "{name}({vlist})".format(name=self.predicate.name, vlist=vlist)
+        vlist = ",".join(v.name.lower() for v in self.variables)
+        return f"{self.predicate.name}({vlist})"
 
     def __repr__(self):
-        return "Atom(predicate={name}, variables={vlist}, renamed={ren}))".format(name=self.predicate.name,
-                                                                                  vlist=self.variables,
-                                                                                  ren=self.renamed_vars)
+        return f"Atom(predicate={self.predicate.name}, variables={self.variables}, renamed={self.renamed_vars}))"
 
     def __eq__(self, other):
         if isinstance(other, Atom):
@@ -128,7 +145,7 @@ class Atom:
 class Literal:
     #  atom or its negation
 
-    def __init__(self, atom: Atom, positive: bool=True):
+    def __init__(self, atom: Atom, positive: bool = True):
         self.atom = atom
         self.positive = positive
 
@@ -136,10 +153,10 @@ class Literal:
         if self.positive:
             return str(self.atom)
         else:
-            return "~{atom}".format(atom=self.atom)
+            return f"!{self.atom}"
 
     def __repr__(self):
-        return "Literal(positive={pos}, atom={atom})".format(pos=self.positive, atom=repr(self.atom))
+        return f"Literal(positive={self.positive}, atom={repr(self.atom)})"
 
     def __eq__(self, other):
         if isinstance(other, Literal):
@@ -157,13 +174,13 @@ class Clause:
         self.literals = literals
 
     def __str__(self):
-        return " | ".join(str(lit) for lit in self.literals)
+        return " v ".join(f"{lit}" for lit in self.literals)
 
     def __repr__(self):
-        return "Clause(literals={lits})".format(lits=self.literals)
+        return f"Clause(literals={self.literals})"
 
     def __eq__(self, other):
-        if isinstance(other, Literal):
+        if isinstance(other, Clause):
             for lit in self.literals:
                 if lit not in other.literals:
                     return False
@@ -171,17 +188,24 @@ class Clause:
         return False
 
 
-class CNF:
-    #  conjunction of clauses
+# TODO Currently only works for CNF
+class Formula:
 
     def __init__(self, clauses: List[Clause]):
-        self.clauses = clauses
+        self.clauses = clauses  # TODO
 
     def __str__(self):
-        return " & ".join("({})".format(lit) for lit in self.clauses)
+        return " ^ ".join(f"({clause})" for clause in self.clauses)
 
     def __repr__(self):
-        return "Clause(literals={lits})".format(lits=self.clauses)
+        return f"Formula[CNF](clauses={self.clauses})"
+
+    def get_distinct_predicates(self) -> Set[Predicate]:
+        p_set = set()
+        for clause in self.clauses:
+            for literal in clause.literals:
+                p_set.add(literal.atom.predicate)
+        return p_set
 
     def get_atoms(self) -> Dict[str, Atom]:
         p_dict = {}
@@ -204,3 +228,47 @@ class CNF:
                 for variable in literal.get_vars():
                     distinct_vars.add(variable)
         return list(distinct_vars)
+
+
+class CNF(Formula):
+    #  conjunction of clauses
+
+    def __init__(self, clauses: List[Clause]):
+        super().__init__(clauses)
+
+    def __str__(self):
+        return " ^ ".join(f"({clause})" for clause in self.clauses)
+
+    def __repr__(self):
+        return f"CNF(clauses={self.clauses})"
+
+
+class WeightedFormula:
+
+    def __init__(self, weight: float, formula: Formula):
+        self.weight = weight
+        self.formula = formula
+
+    def __str__(self):
+        return f"{self.weight:.5g}: {self.formula}"
+
+    def __repr__(self):
+        return f"WeightedFormula(weight:{self.weight},formula:{repr(self.formula)})"
+
+    def __eq__(self, other):
+        if isinstance(other, WeightedFormula):
+            return self.weight == other.weight and self.formula == other.formula
+        return False
+
+
+class MLN:
+
+    def __init__(self, weighted_formulas: List[WeightedFormula]):
+        self.weighted_formulas = weighted_formulas
+
+    def __str__(self):
+        wf_list = "\n".join(f"{fml}" for fml in self.weighted_formulas)
+        return f"MLN:\n{wf_list}"
+
+    def __repr__(self):
+        return f"MLN({self.weighted_formulas})"
