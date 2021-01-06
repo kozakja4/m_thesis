@@ -22,6 +22,11 @@ class CnfParser:
 
     def read_cnf(self, cnf: str) -> None:
         print(f"Parsing CNF: {cnf}")
+        weight_re = re.search(r"^\s*([-+]?\d*\.\d+|\d+)\s+", cnf)
+        weight = 1.0
+        if weight_re is not None:
+            weight = float(weight_re.group(1))
+            cnf = cnf[weight_re.end(1):]
         clauses = re.split(r"\s*AND\s+", cnf)
         cnf_known_vars = {}
         cnf_clauses = []
@@ -31,7 +36,7 @@ class CnfParser:
             for literal in literals:
                 while literal.startswith("("):
                     literal = literal[1:]
-                neg_match = re.match(r"^NOT\s+", literal)
+                neg_match = re.match(r"^\s*NOT\s+", literal)
                 positive = neg_match is None
                 atom = literal
                 if not positive:
@@ -39,12 +44,13 @@ class CnfParser:
                 split_atom = re.split(r"\(", atom)
                 if len(split_atom) != 2:
                     raise ValueError(f"More than one left bracket encountered in {atom}")
-                atom_name = split_atom[0]
+                atom_name = split_atom[0].strip()
                 variables = split_atom[1]
                 vars_here = []
                 for v in re.split(r"\s*,\s*", variables):
-                    while v.endswith(")"):
-                        v = v[:-1]
+                    b = re.search(r"\w+", v)
+                    v = b.group(0)
+                    v = v.strip()
                     if v not in cnf_known_vars:
                         cnf_known_vars[v] = ccnf.Variable(v)
                     vars_here.append(cnf_known_vars[v])
@@ -59,7 +65,8 @@ class CnfParser:
                 cnf_literals.append(cnf_literal)
             cnf_clause = ccnf.Clause(cnf_literals)
             cnf_clauses.append(cnf_clause)
-        self.formulas.append(ccnf.CNF(cnf_clauses))
+        formula = ccnf.Formula(cnf_clauses)
+        self.formulas.append(ccnf.WeightedFormula(weight, formula))
 
 
 if __name__ == "__main__":
@@ -67,9 +74,9 @@ if __name__ == "__main__":
     parser.read_cnf("A(X,Y) OR B(Y,X) OR A(Y,Z)")
     parser.read_cnf("A(X,Y) AND B(Y,X) AND NOT A(Y,Z)")
     parser.read_cnf("A(X,Y) AND (B(Y,X) OR A(Y,Z))")
-    parser.read_cnf("A(X,Y)")
-    parser.read_cnf("A(X,Y) OR B(X,Z)")
-    parser.read_cnf("Z(Z,Z) AND NOT B(X,Z)")
+    parser.read_cnf("3.2 A(X,Y)")
+    parser.read_cnf("1 A(X,Y) OR B(X,Z)")
+    parser.read_cnf("0.77 Z(Z,Z) AND NOT B(X,Z)")
     print(parser.predicates)
     print(parser.formulas)
     parser.read_cnf("Z(Z,Z,Z)")

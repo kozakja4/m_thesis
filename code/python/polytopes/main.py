@@ -33,4 +33,4 @@ if __name__ == "__main__":
     print(nums)
 
     pw = PossibleWorld(constants, formulas, [])
-    pw.satisfiable(nums)
+    #pw.satisfiable(nums)

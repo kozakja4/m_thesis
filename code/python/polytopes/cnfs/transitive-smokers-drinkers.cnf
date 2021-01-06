@@ -1,0 +1,5 @@
+1.22 NOT stress(X) OR smokes(X)
+2.08 NOT friend(X,Y) OR NOT smokes(X) OR smokes(Y)
+0.69 NOT friend(X,Y) OR NOT friend(X,Z) OR friend(Y,Z)
+2 NOT stress(X) OR drinks(X)
+1.5 NOT friend(X,Y) OR NOT drinks(X) OR drinks(Y)
